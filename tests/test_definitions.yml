@@ -7,47 +7,55 @@ tests:
   # ---------------------------------------------------------------- T1 Kampus
   - name: nim_duplikat
     topic: t1
+    dimension: uniqueness
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM (SELECT nim FROM raw_mahasiswa GROUP BY 1 HAVING count(*) > 1)
     expected: pass
     perkiraan_baris: 0
     justifikasi: NIM adalah kunci bisnis mahasiswa; duplikat di sini berarti dua orang terbaca satu.
-  - name: presensi_duplikat_grain
+  - name: presensi_matakuliah_orphan
     topic: t1
-    severity: blocking
+    dimension: uniqueness
+    severity: warning
     scope: source
-    sql: >-
-      SELECT count(*) FROM (SELECT nim, kode_mk, tanggal FROM raw_presensi
-      GROUP BY 1,2,3 HAVING count(*) > 1)
-    expected: fail
-    perkiraan_baris: 4344
-    justifikasi: Grain fact presensi = satu mahasiswa per pertemuan per MK; baris kembar menggandakan kehadiran.
+    sql: >
+      SELECT count(*) FROM raw_presensi p
+      JOIN raw_mahasiswa m ON p.nim = m.nim
+      LEFT JOIN raw_matakuliah mk ON p.kode_mk = mk.kode_mk
+      WHERE m.angkatan = 2023 AND mk.kode_mk IS NULL
+    expected: pass
+    perkiraan_baris: 0
+    justifikasi: Kehadiran untuk mata kuliah yang tidak terdaftar tidak bisa dihubungkan ke rekap MK manapun.
   - name: tanggal_presensi_format_lain
     topic: t1
+    dimension: timeliness
     severity: blocking
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_presensi WHERE tanggal LIKE '__/__/____'
     expected: fail
     perkiraan_baris: 5812
     justifikasi: dd/mm/yyyy tidak bisa diparse sebagai ISO; kalau dibiarkan, tanggalnya jadi NULL atau salah.
-  - name: nilai_di_luar_rentang
+  - name: pertemuan_ke_kosong
     topic: t1
+    dimension: completeness
     severity: blocking
     scope: source
-    sql: >-
-      SELECT count(*) FROM raw_nilai
-      WHERE TRY_CAST(nilai_angka AS INT) > 100 OR TRY_CAST(nilai_angka AS INT) < 0
+    sql: >
+      SELECT count(*) FROM raw_presensi p
+      JOIN raw_mahasiswa m ON p.nim = m.nim
+      WHERE m.angkatan = 2023 AND (p.pertemuan_ke IS NULL OR p.pertemuan_ke = '')
     expected: fail
-    perkiraan_baris: 2
-    justifikasi: Nilai 117 dan -5 bukan nilai; keduanya merusak rata-rata per MK.
+    perkiraan_baris: 815
+    justifikasi: Setiap rekaman presensi harus memiliki nomor pertemuan; nilai kosong menunjukkan data yang tidak lengkap dan tidak dapat dianalisis per pertemuan.
   - name: status_presensi_di_luar_domain
     topic: t1
+    dimension: validity
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_presensi
       WHERE upper(trim(status)) NOT IN ('HADIR','H','IZIN','SAKIT','ALPA')
     expected: fail
@@ -55,20 +63,20 @@ tests:
     justifikasi: 9 varian kapital bercampur; harus dinormalkan sebelum jadi measure.
   - name: mahasiswa_angkatan_kosong
     topic: t1
+    dimension: completeness
     severity: blocking
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_mahasiswa WHERE angkatan IS NULL OR angkatan = ''
     expected: fail
     perkiraan_baris: 62
     justifikasi: Slice tim dibentuk dari angkatan; baris tanpa angkatan tidak masuk tim mana pun.
-
   # ---------------------------------------------------------------- T2 POS UMKM
   - name: transaction_id_duplikat
     topic: t2
     severity: blocking
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM (SELECT transaction_id FROM raw_transactions
       GROUP BY 1 HAVING count(*) > 1)
     expected: fail
@@ -78,7 +86,7 @@ tests:
     topic: t2
     severity: blocking
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_transaction_items i
       WHERE NOT EXISTS (SELECT 1 FROM raw_products p WHERE p.product_id = i.product_id)
     expected: fail
@@ -88,7 +96,7 @@ tests:
     topic: t2
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_transactions WHERE tanggal_waktu LIKE '%Z'
     expected: fail
     perkiraan_baris: 2389
@@ -97,7 +105,7 @@ tests:
     topic: t2
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_transactions t
       WHERE NOT EXISTS (SELECT 1 FROM raw_transaction_items i WHERE i.transaction_id = t.transaction_id)
     expected: fail
@@ -107,7 +115,7 @@ tests:
     topic: t2
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_transaction_items i
       JOIN raw_transactions t USING (transaction_id)
       WHERE TRY_CAST(i.qty AS INT) < 0 AND upper(trim(t.status)) <> 'REFUND'
@@ -118,18 +126,17 @@ tests:
     topic: t2
     severity: blocking
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_transaction_items WHERE TRY_CAST(harga_satuan AS BIGINT) <= 0
     expected: pass
     perkiraan_baris: 0
     justifikasi: Harga nol/negatif merusak semua measure omzet di hilir.
-
   # ---------------------------------------------------------------- T3 Cuaca BMKG
   - name: duplikat_grain_desa_slot
     topic: t3
     severity: blocking
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM (SELECT adm4, local_datetime FROM raw_prakiraan_cuaca
       GROUP BY 1,2 HAVING count(*) > 1)
     expected: pass
@@ -139,7 +146,7 @@ tests:
     topic: t3
     severity: blocking
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_prakiraan_cuaca WHERE TRY_CAST(tp AS DOUBLE) < 0
     expected: pass
     perkiraan_baris: 0
@@ -148,7 +155,7 @@ tests:
     topic: t3
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_prakiraan_cuaca WHERE vs IS NULL OR vs = ''
     expected: fail
     perkiraan_baris: 1156
@@ -157,7 +164,7 @@ tests:
     topic: t3
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM (SELECT weather_desc FROM raw_prakiraan_cuaca
       GROUP BY 1 HAVING count(DISTINCT weather) > 1)
     expected: fail
@@ -167,7 +174,7 @@ tests:
     topic: t3
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_prakiraan_cuaca WHERE TRY_CAST(tp AS DOUBLE) = 0
     expected: fail
     perkiraan_baris: 812
@@ -176,7 +183,7 @@ tests:
     topic: t3
     severity: warning
     scope: source
-    sql: >-
+    sql: >
       SELECT count(*) FROM raw_prakiraan_cuaca WHERE TRY_CAST(split_part(time_index, '-', 1) AS INT) > 23
     expected: fail
     perkiraan_baris: 625
