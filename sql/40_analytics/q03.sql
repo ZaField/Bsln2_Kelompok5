@@ -6,8 +6,8 @@
 
 WITH monthly_attendance AS (
   SELECT
-    d.tahun AS tahun,
-    d.bulan AS bulan,
+    d.tahun AS tahun, -- possibly error d.tahun should be d.year
+    d.bulan AS bulan, -- possibly error d.bulan should be d.month
     mk.kode_mk,
     mk.nama_mk,
     AVG(f.is_hadir) AS attendance_rate
