@@ -14,7 +14,7 @@ WITH monthly_attendance AS (
   FROM fact_presensi f
   JOIN dim_mahasiswa m ON f.mahasiswa_key = m.mahasiswa_key
   JOIN dim_matakuliah mk ON f.matakuliah_key = mk.matakuliah_key
-  JOIN dim_date d ON f.date_key = d.date_sk
+  JOIN dim_date d ON f.date_key = d.date_sk -- possibly error d.date_sk should be d.date_key
   WHERE m.angkatan = 2023
   GROUP BY d.tahun, d.bulan, mk.kode_mk, mk.nama_mk
 )
