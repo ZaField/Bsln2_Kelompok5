@@ -9,7 +9,7 @@ Bagaimana perubahan dalam program studi (prodi) atau status mahasiswa memengaruh
 Desain saat ini tidak dapat menjawab pertanyaan ini karena sumber data `mahasiswa.csv` hanya menyediakan **satu kali snapshot** tanpa riwayat perubahan. Dalam data ini:
 
 - Setiap mahasiswa memiliki tepatnya **satu rekaman SCD2**
-- `valid_from` diatur` diatur ke `tanggal_masuk` (tanggal mulai kuliah)
+- `valid_from` diatur ke `tanggal_masuk` (tanggal mulai kuliah)
 - `valid_to` diatur ke `'9999-12-31'` (masa depan abadi)
 - `is_current` disetel ke `TRUE` untuk semua mahasiswa yang aktif
 
@@ -39,6 +39,7 @@ Dengan data seperti ini, tabel dimensi `dim_mahasiswa` SCD2 akan dapat dengan be
 
 ## Dampak pada Analisis
 
+Kehadiran 2023 dibandingkan dengan status pada saat snapshot, bukan status pada saat kuliah, sehingga mahasiswa 'lulus', 'cuti' atau 'do' tetap tampak punya kehadiran pada periode itu.
 Tanpa variasi historis dalam data sumber, model dimensi SCD2 tidak dapat memberikan wawasan mengenai bagaimana perubahan program/status memengaruhi perilaku kehadiran. Analisis yang mungkin kita lakukan hanya terbatas pada:
 - Kehadiran berdasarkan program/status **saat ini** saja
 - Pola kehadiran seperti biasa tanpa konteks perubahan historis
