@@ -5,19 +5,21 @@
 
 tests:
   # ---------------------------------------------------------------- T1 Kampus
-  - name: nim_duplikat
+  - name: presensi_duplikat_grain
     topic: t1
     dimension: uniqueness
-    severity: warning
+    severity: blocking
     scope: source
     sql: >
-      SELECT count(*) FROM (SELECT nim FROM raw_mahasiswa GROUP BY 1 HAVING count(*) > 1)
-    expected: pass
-    perkiraan_baris: 0
-    justifikasi: NIM adalah kunci bisnis mahasiswa; duplikat di sini berarti dua orang terbaca satu.
+      SELECT count(*) FROM (SELECT p.nim, p.kode_mk, p.tanggal FROM raw_presensi p
+      JOIN raw_mahasiswa m ON p.nim = m.nim WHERE m.angkatan = 2023
+      GROUP BY 1,2,3 HAVING count(*) > 1)
+    expected: fail
+    perkiraan_baris: 1386
+    justifikasi: Satu mahasiswa-MK-tanggal harus satu baris; kembar menggandakan hitungan kehadiran.
   - name: presensi_matakuliah_orphan
     topic: t1
-    dimension: uniqueness
+    dimension: consistency
     severity: warning
     scope: source
     sql: >
@@ -60,7 +62,7 @@ tests:
       WHERE upper(trim(status)) NOT IN ('HADIR','H','IZIN','SAKIT','ALPA')
     expected: fail
     perkiraan_baris: 11819
-    justifikasi: 9 varian kapital bercampur; harus dinormalkan sebelum jadi measure.
+    justifikasi: Nilai di luar HADIR/H/IZIN/SAKIT/ALPA (semuanya '-') tidak punya arti terdokumentasi; dipetakan ke alpa sebagai asumsi eksplisit di fact.
   - name: mahasiswa_angkatan_kosong
     topic: t1
     dimension: completeness
