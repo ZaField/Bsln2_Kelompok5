@@ -6,15 +6,15 @@
 
 WITH monthly_attendance AS (
   SELECT
-    d.tahun AS tahun, -- possibly error d.tahun should be d.year
-    d.bulan AS bulan, -- possibly error d.bulan should be d.month
+    d.tahun AS tahun,
+    d.bulan AS bulan,
     mk.kode_mk,
     mk.nama_mk,
     AVG(f.is_hadir) AS attendance_rate
   FROM fact_presensi f
   JOIN dim_mahasiswa m ON f.mahasiswa_key = m.mahasiswa_key
   JOIN dim_matakuliah mk ON f.matakuliah_key = mk.matakuliah_key
-  JOIN dim_date d ON f.date_key = d.date_sk -- possibly error d.date_sk should be d.date_key
+  JOIN dim_date d ON f.date_key = d.date_sk
   WHERE m.angkatan = 2023
   GROUP BY d.tahun, d.bulan, mk.kode_mk, mk.nama_mk
 )
