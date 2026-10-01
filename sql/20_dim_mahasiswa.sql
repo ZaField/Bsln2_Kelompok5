@@ -15,19 +15,16 @@
 CREATE OR REPLACE TABLE dim_mahasiswa AS
 SELECT
   ROW_NUMBER() OVER (ORDER BY nim) AS mahasiswa_key,   -- surrogate key
-  nim,                                                 -- natural key
+  CAST(nim AS VARCHAR) AS nim,                                                 -- natural key
   nama,
   angkatan,
   prodi,
-  status,
+  LOWER(TRIM(status)) AS status,
   kota_asal,
   tanggal_masuk,
   tanggal_masuk AS valid_from,                         -- Type 2: mulai dari tanggal masuk
   DATE '9999-12-31' AS valid_to,                       -- Type 2: selamanya jika masih aktif
-  CASE
-    WHEN status IN ('Aktif', 'AKTIF', 'aktif', 'Lulus', 'lulus') THEN TRUE
-    ELSE FALSE
-  END AS is_current                                    -- Type 2: flag record terbaru
+  TRUE AS is_current                                   -- Type 2: satu snapshot = satu versi per mahasiswa, jadi semua baris adalah versi terkini
 FROM (
   SELECT
     nim,
@@ -40,5 +37,5 @@ FROM (
   FROM read_csv_auto('data/raw/t1_kampus/mahasiswa.csv')
   WHERE angkatan = 2023  -- Slice k5 untuk Grup 5 (Angkatan 2023)
     AND nim IS NOT NULL
-    AND nim != ''
+    AND CAST(p.nim AS VARCHAR) != 
 );

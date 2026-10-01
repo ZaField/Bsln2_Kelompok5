@@ -15,7 +15,7 @@ SELECT CAST(strftime(d, '%Y%m%d') AS INTEGER) AS date_sk,   -- kunci: YYYYMMDD, 
        CAST(dayofweek(d) AS INTEGER) AS hari_ke,            -- 0 = Minggu
        strftime(d, '%A') AS nama_hari,
        CAST(dayofweek(d) IN (0, 6) AS BOOLEAN) AS akhir_pekan
-FROM (SELECT unnest(generate_series(DATE '2024-01-01', DATE '2027-12-31', INTERVAL 1 DAY)) AS d);
+FROM (SELECT unnest(generate_series(DATE '2022-01-01', DATE '2027-12-31', INTERVAL 1 DAY)) AS d);
 
 -- Anggota Unknown: banyak pipeline gagal bukan karena datanya salah, tapi karena ada baris
 -- yang tidak punya tanggal. Baris seperti itu tetap harus punya tempat.
