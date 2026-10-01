@@ -5,35 +5,37 @@
 
 ## Alur: sumber → staging → dim → fact
 
-| # | Tabel | Sumber | Strategi | Kapan menggandakan baris kalau dianggap benar |
+`sql/load.sql` membangun semua tabel dari nol dalam satu run. Setiap tabel memakai
+`CREATE OR REPLACE TABLE ... AS SELECT`, jadi idempoten secara konstruksi. Tidak ada tabel
+staging fisik: tahap staging adalah subquery di dalam SQL fact (baca CSV → dedup → parse tanggal).
+Alternatif yang ditolak: (a) tabel staging fisik, karena menambah objek tanpa manfaat untuk 38 ribu
+baris; (b) upsert/MERGE, karena butuh change log perubahan mahasiswa yang tidak ada di sumber.
+
+| # | Tabel | Sumber | Strategi | Kapan menggandakan baris |
 |---|---|---|---|---|
-| 1 | `dim_date` | generator (diberikan) | `CREATE OR REPLACE` (full) | — tidak bisa: dibangun dari rentang tanggal, bukan dari data |
-| 2 | `dim_mahasiswa` | `data/raw/t1_kampus/mahasiswa.csv` | Upsert by `nim` with SCD Type 2 (track `valid_from`/`valid_to`) | Jika data sumber memiliki perubahan pada `prodi` atau `status` untuk sama `nim` dan dijalankan dua kali tanpa deteksi perubahan, maka akan membuat baris baru yang tidak diperlukan (duplikasi histori) |
-| 3 | `dim_matakuliah` | `data/raw/t1_kampus/matakuliah.csv` | Upsert by `kode_mk` (Type 0 - overwrite) | Tidak boleh: karena ada satu baris per `kode_mk`, upsert dengan kunci alami akan mengganti, tidak menambahkan |
-| 4 | `fact_presensi` | `data/raw/t1_kampus/presensi.csv` | Append-only dengan deduplikasi pada kunci alami `(nim, kode_mk, tanggal, pertemuan_ke)` | Jika baris sumber memiliki kombinasi sama `(nim, kode_mk, tanggal, pertemuan_ke)` dan nilai yang berbeda (misal `status` berubah), maka akan membuat duplikasi fakta yang tidak boleh ada karena satu pertemuan hanya boleh satu status kehadiran |
+| 1 | `dim_date` | generator (rentang 2022-01-01 s.d. 2027-12-31) | `CREATE OR REPLACE` (full) | Tidak bisa: dibangun dari rentang tanggal, bukan dari data. Satu baris Unknown (`date_sk = -1`) ditambahkan. |
+| 2 | `dim_mahasiswa` | `mahasiswa.csv`, filter `angkatan = 2023` | `CREATE OR REPLACE` (full); SCD Type 2 | Kalau diganti `INSERT` tanpa mengosongkan tabel: 881 baris jadi 1.762. Kalau diganti upsert SCD2 yang tidak membandingkan atribut: tiap run menambah versi baru untuk nim yang sama. Nim di sumber unik (0 duplikat), jadi full rebuild aman. |
+| 3 | `dim_matakuliah` | `matakuliah.csv` | `CREATE OR REPLACE` (full); Type 0 | `INSERT` polos: 12 baris jadi 24. `kode_mk` unik di sumber. |
+| 4 | `fact_presensi` | `presensi.csv` | `CREATE OR REPLACE` (full); dedup `ROW_NUMBER()` per `(nim, kode_mk, tanggal terparse)`, simpan `rn = 1` | `INSERT` polos: tiap run menambah 37.002 baris. Tanpa dedup: 1.451 baris kembar persis ikut masuk (38.453 vs 37.002). Upsert dengan kunci yang memuat `pertemuan_ke`: baris kosong (781) tidak pernah cocok sehingga disisipkan ulang tiap run. |
 
 ## Tiga pertanyaan wajib
 
-1. **Natural key** yang dipakai untuk upsert/incremental: 
+1. **Natural key**
    - `dim_mahasiswa`: `nim`
    - `dim_matakuliah`: `kode_mk`
-   - `fact_presensi`: `(nim, kode_mk, tanggal, pertemuan_ke)`
-
-2. **Kolom partisi atau window** kalau incremental (mis. `tanggal`):
-   - `dim_mahasiswa`: Tidak menggunakan partisi (ukuran kecil), tetapi window incremental bisa menggunakan `tanggal_masuk` atau `updated_at` jika ada
-   - `dim_matakuliah`: Tidak menggunakan partisi (referensi kecil, tetap di-refresh seluruhnya)
-   - `fact_presensi`: Partisi oleh `tanggal` (bulanan atau tahunan) untuk optimasi query historical data
-
-3. **Kapan strategi ini menggandakan baris kalau dijalankan dua kali** — nyatakan sendiri:
-   - `dim_mahasiswa`: Jika menjalankan dua kali tanpa mendeteksi perubahan pada data sumber (misal: tidak memeriksa checksum atau timestamp), maka akan membuat dua baris SCD Type 2 yang identik untuk sama `nim` dan periode waktu yang sama, yang merupakan duplikasi yang tidak sah.
-   - `dim_matakuliah`: Tidak akan menggandakan baris karena menggunakan kunci alami `kode_mk` sebagai kondisi dalam `MERGE` atau `UPSERT` — baris dengan `kode_mk` yang sama akan diupdate, tidak disisipkan.
-   - `fact_presensi`: Jika tidak melakukan deduplikasi pada kunci alami `(nim, kode_mk, tanggal, pertemuan_ke)` sebelum menyisipkan, maka menjalankan dua kali dengan data sumber yang sama akan membuat dua baris fakta yangidentik untuk kejadian presensi yang sama, yang melanggar biji fakta (satu baris per kejadian).
+   - `fact_presensi`: `(nim, kode_mk, tanggal)`. `pertemuan_ke` tidak dipakai karena kosong di 781 baris.
+2. **Kolom partisi / window incremental**: tidak dipakai, karena full rebuild dan volumenya kecil
+   (37.002 baris, 14 tanggal pertemuan). Jika nanti incremental, kolomnya `tanggal`.
+3. **Kapan menggandakan baris jika dijalankan dua kali**: lihat kolom terakhir tabel di atas.
+   Dengan strategi yang dipilih, `--twice` menghasilkan jumlah baris sama:
+   dim_date 2.192, dim_mahasiswa 881, dim_matakuliah 12, fact_presensi 37.002.
+   Surrogate key (`ROW_NUMBER()`) dibuat ulang tiap run, tetapi semua tabel dibangun ulang dalam run
+   yang sama, sehingga fact selalu konsisten dengan dimensinya.
 
 ## Urutan dependency
 
-Tulis urutan eksekusi yang benar dan alasannya (tabel mana harus ada sebelum yang lain):
-1. `10_dim_date.sql` — harus terlebih dahulu karena merupakan dimensi konform yang digunakan oleh semua fact dan dimensi lain sebagai referensi waktu.
-2. `20_dim_date.sql` — mengkolom `academic_semester` ke tabel tanggal yang sudah ada, tetap tidak menghambat karena hanya menambahkan kolom.
-3. `20_dim_mahasiswa.sql` — bergantung hanya pada dimensi tanggal (untuk validasi tanggal, meskipun tidak langsung di-JOIN dalam definisi tabelnya, namun baik untuk konsistensi).
-4. `20_dim_matakuliah.sql` — independen dari dimensi lain, hanya mengandung data kursus mentah.
-5. `30_fact_presensi.sql` — harus terakhir karena bergantung pada ketiga dimensi: tanggal (untuk waktu), mahasiswa (untuk identitas siswa), dan matakuliah (untuk mata kuliah). Fact tidak boleh dimuat sebelum dimensi terkait karena akan gagal melakukan JOIN atau menghasilkan kunci asing yang tidak terdefinisi.
+1. `10_dim_date.sql`: pertama, karena fact bergabung ke dim_date.
+2. `20_dim_date.sql`: menambah kolom `academic_semester` pada tabel yang sudah ada.
+3. `20_dim_mahasiswa.sql`: tidak bergantung pada tabel lain.
+4. `20_dim_matakuliah.sql`: tidak bergantung pada tabel lain. (Poin 3–4 boleh dibalik.)
+5. `30_fact_presensi.sql`: terakhir, karena bergabung ke ketiga dimensi.
