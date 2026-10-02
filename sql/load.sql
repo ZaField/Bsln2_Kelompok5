@@ -94,7 +94,7 @@ FROM (
   FROM read_csv_auto('data/raw/t1_kampus/mahasiswa.csv')
   WHERE angkatan = 2023  -- Slice k5 untuk Grup 5 (Angkatan 2023)
     AND nim IS NOT NULL
-    AND CAST(p.nim AS VARCHAR) != 
+    AND TRIM(CAST(nim AS VARCHAR)) <> ''
 );
 
 
