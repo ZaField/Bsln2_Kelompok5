@@ -6,10 +6,10 @@
 -- GRAIN: Satu baris = satu mahasiswa pada satu mata kuliah pada satu tanggal pertemuan.
 --   Kunci alami: (nim, kode_mk, tanggal). pertemuan_ke = degenerate dimension, BUKAN bagian kunci
 --   (kosong di 781 baris sumber).
--- Aturan status: 'H' = hadir (singkatan). '-' tidak punya arti terdokumentasi; DIPETAKAN KE ALPA sebagai
+-- Aturan status: 'H' = hadir (singkatan). '-' tidak punya arti terdokumentasi DIPETAKAN KE ALPA sebagai
 --   ASUMSI (jam_masuk kosong seperti ALPA). Pada data ini empat flag saling lepas dan lengkap (jumlah = 1).
 -- Aditivitas: is_hadir/is_izin/is_sakit/is_alpa = ADDITIVE (flag 0/1, boleh di-SUM lintas dimensi).
---   jam_masuk = NON-ADDITIVE (teks 'H:MM', tidak bermakna dijumlah; terisi juga untuk izin/sakit,
+--   jam_masuk = NON-ADDITIVE (teks 'H:MM', tidak bermakna dijumlah terisi juga untuk izin/sakit,
 --   jadi bukan penanda kehadiran).
 
 CREATE OR REPLACE TABLE fact_presensi AS
