@@ -89,7 +89,7 @@ def main() -> None:
     print(f"# Test kualitas — {ctx['cfg']['label']} / {args.slice}")
     print(f"# {len(tests)} test · view: {', '.join(views)}\n")
     for h in hasil:
-        tanda = {"PASS": "P", "FAIL": "F"}.get(h["hasil"], "?")
+        tanda = {"PASS": "✓", "FAIL": "✗"}.get(h["hasil"], "?")
         harap = h.get("expected", "?")
         angka = f"{h.get('pelanggaran'):,}" if isinstance(h.get("pelanggaran"), int) else "-"
         sesuai = {True: "sesuai harapan", False: "TIDAK sesuai harapan"}.get(h.get("sesuai_harapan"), "")
